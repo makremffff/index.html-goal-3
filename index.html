@@ -947,7 +947,7 @@ You will earn 5% of the revenue from every referral you bring through ads!
             }
             
             if (adsWatchedToday >= DAILY_MAX) {
-                showCustomAlert('Daily Limit Reached!', `You have completed all today's ads (${DAILY_MAX}). Ｃｏｍｅ ｂａｃｋ Ａｆｔｅｒ 6 Ｈｏｕｒｓ🥩!`, 'warning');
+                showCustomAlert('Daily Limit Reached!', `ＡＬＬ ａｄｓ Ｄｏｎｅ (${DAILY_MAX}). Ｃｏｍｅ ｂａｃｋ Ａｆｔｅｒ 6 Ｈｏｕｒｓ🥩!`, 'warning');
                 return;
             }
 
@@ -994,12 +994,12 @@ You will earn 5% of the revenue from every referral you bring through ads!
                         // 6. Custom Alert for Success (in English)
                         let alertTitle = 'Reward Granted!';
                         let alertType = 'success';
-                        let alertMessage = `Two ads watched, and you earned ${actualReward} SHIB.`;
+                        let alertMessage = ` ＹＯＵ ＷＩＮ ${actualReward} SHIB.`;
                         
                         if(adResult.data.new_ads_count >= DAILY_MAX){
                             alertTitle = 'Daily Task Completed!';
                             // **UPDATED MESSAGE HERE** to 'Come back in 6 hours.'
-                            alertMessage = `Congratulations! You have completed all today's ads (${DAILY_MAX}). Come back in 6 hours!`;
+                            alertMessage = `Congratulations! You have completed all today's ads (${DAILY_MAX}). ＣＯＭＥ ｂａｃｋ ａｆｔｅｒ 6 Ｈｏｕｒｓ!`;
                         }
                         showCustomAlert(alertTitle, alertMessage, alertType);
 
