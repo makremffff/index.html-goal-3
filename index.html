@@ -408,11 +408,11 @@
 
         /* Specific styles for Success */
         .custom-alert-box.success .alert-title { color: #28a745; }
-        .custom-alert-box.success .alert-icon::before { content: '✅'; }
+        .custom-alert-box.success .alert-icon::before { content: '🎮'; }
 
         /* Specific styles for Error/Warning */
         .custom-alert-box.error .alert-title { color: #dc3545; }
-        .custom-alert-box.error .alert-icon::before { content: '❌'; }
+        .custom-alert-box.error .alert-icon::before { content: '🤦'; }
 
         /* Specific styles for Warning/Info */
         .custom-alert-box.warning .alert-title { color: #ffc107; }
@@ -776,8 +776,29 @@ You will earn 5% of the revenue from every referral you bring through ads!
                         // Attempt to extract message after a common prefix
                         cleanMessage = alertMessage.split('] ')[1] || errorMessage; 
                     }
+                    
+                    // Translate to Arabic
+                    let arabicTitle = 'فشلت العملية!';
+                    let arabicMessage = cleanMessage;
+                    
+                    if (alertTitle === 'Rate Limit Exceeded!') {
+                        arabicTitle = 'تم تجاوز حد الطلبات!';
+                        arabicMessage = 'لقد تجاوزت الحد المسموح به من الطلبات. يرجى المحاولة لاحقاً.';
+                    } else if (alertTitle === 'Access Denied!') {
+                        arabicTitle = 'تم رفض الوصول!';
+                        arabicMessage = 'تم حظر هذا الحساب.';
+                    } else if (alertTitle === 'Daily Limit Reached!') {
+                        arabicTitle = 'تم الوصول إلى الحد اليومي!';
+                        arabicMessage = 'لقد وصلت إلى الحد الأقصى المسموح به من الإجراءات لهذا اليوم.';
+                    } else if (alertTitle === 'Security Error!') {
+                        arabicTitle = 'خطأ أمني!';
+                        arabicMessage = 'حدث خطأ متعلق بالأمان. يرجى المحاولة مرة أخرى.';
+                    } else {
+                        // General error, use original message in Arabic if possible
+                        arabicMessage = `خطأ: ${cleanMessage}`;
+                    }
 
-                    showCustomAlert(alertTitle, cleanMessage, alertType);
+                    showCustomAlert(arabicTitle, arabicMessage, alertType);
                     return { ok: false, error: errorMessage };
                 }
 
@@ -787,7 +808,7 @@ You will earn 5% of the revenue from every referral you bring through ads!
                     Telegram.WebApp.hideProgress();
                 }
                 console.error(`General Fetch Error for type ${payload.type}:`, error.message);
-                showCustomAlert('Connection Error!', 'Could not connect to the server. Please check your internet connection.', 'error');
+                showCustomAlert('خطأ في الاتصال!', 'تعذر الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت.', 'error');
                 return { ok: false, error: error.message };
             }
         }
@@ -841,7 +862,7 @@ You will earn 5% of the revenue from every referral you bring through ads!
                 if (result.data.is_banned) {
                     isBanned = true;
                     mainScreen.classList.remove('visible');
-                    showCustomAlert('Account Banned!', 'This account has been permanently restricted due to policy violations. Access to the mini app is denied.', 'error');
+                    showCustomAlert('تم حظر الحساب!', 'تم تقييد هذا الحساب نهائيًا بسبب انتهاك السياسات. تم رفض الوصول إلى التطبيق المصغر.', 'error');
                     return;
                 }
                 
@@ -913,9 +934,12 @@ You will earn 5% of the revenue from every referral you bring through ads!
             }
         }
         
+        // ***************************************************************
+        // UPDATED watchAds FUNCTION FOR TWO SEQUENTIAL ADS
+        // ***************************************************************
         async function watchAds(){
             if (isBanned) {
-                 showCustomAlert('Access Denied!', 'This user account has been banned.', 'error');
+                 showCustomAlert('تم رفض الوصول!', 'تم حظر هذا الحساب.', 'error');
                  return;
             }
             
@@ -923,11 +947,21 @@ You will earn 5% of the revenue from every referral you bring through ads!
             const actionId = await requestActionId('watchAd');
             if (!actionId) return; // Error message already shown by fetchApi
 
-            // 2. Show Ad - UPDATED for libtl.com SDK
-            // The ad reward logic is placed inside the .then() block of the new SDK function.
+            // 2. Show First Ad
+            showCustomAlert('الإعلان الأول (1 من 2)', 'يرجى مشاهدة الإعلان الأول كاملاً للمتابعة إلى الإعلان الثاني والحصول على الجائزة.', 'warning');
+            
             show_10245709()
+                .then(() => {
+                    // Success for Ad 1 - Show custom alert before starting the second ad
+                    showCustomAlert('الإعلان الثاني (2 من 2)', 'تم مشاهدة الإعلان الأول بنجاح! الآن سيتم تشغيل الإعلان الثاني.', 'warning');
+                    
+                    // 3. Show Second Ad
+                    return show_10245709();
+                })
                 .then(async () => {
-                    // 3. Request ad reward from the server (Server determines reward, checks limits, and validates Action ID)
+                    // Success for Ad 2 -> Proceed to reward logic
+                    
+                    // 4. Request ad reward from the server (Server determines reward, checks limits, and validates Action ID)
                     const adResult = await fetchApi({
                         type: 'watchAd',
                         action_id: actionId // ⬅️ Send Server-Issued ID
@@ -936,13 +970,13 @@ You will earn 5% of the revenue from every referral you bring through ads!
                     if (adResult.ok) {
                         const actualReward = adResult.data.actual_reward; 
                         
-                        // 4. Update UI with trusted server values
+                        // 5. Update UI with trusted server values
                         updateState({
                             balance: adResult.data.new_balance,
                             ads_watched_today: adResult.data.new_ads_count
                         });
                         
-                        // 5. Referral commission logic (sends a separate commission request)
+                        // 6. Referral commission logic
                         if (referrerId) {
                             fetchApi({
                                 type: 'commission',
@@ -954,37 +988,42 @@ You will earn 5% of the revenue from every referral you bring through ads!
                             });
                         }
                         
-                        // NEW CUSTOM ALERT LOGIC - English Messages
-                        let alertTitle = 'Reward Granted!';
+                        // 7. Custom Alert for Success (in Arabic)
+                        let alertTitle = 'تم منح المكافأة!';
                         let alertType = 'success';
-                        let alertMessage = `Ad watched, you earned ${actualReward} SHIB.`;
+                        let alertMessage = `تمت مشاهدة إعلانين، وربحت ${actualReward} SHIB.`;
                         
                         if(adResult.data.new_ads_count >= DAILY_MAX){
-                            alertTitle = 'Mission Accomplished!';
-                            alertMessage = `Congratulations! You completed all ${DAILY_MAX} ads today. Ｃｏｍｅ ｂａｃｋ Ａｆｔｅｒ 6Ｈｏｕｒｓ🕹!`;
+                            alertTitle = 'أنجزت مهمة اليوم!';
+                            alertMessage = `تهانينا! لقد أكملت جميع إعلانات اليوم (${DAILY_MAX}). عد في الغد!`;
                         }
                         showCustomAlert(alertTitle, alertMessage, alertType);
 
                     }
                 })
                 .catch(e => {
-                    console.error("libtl.com Ad failed to show or was dismissed:", e);
-                    // The old GigaPub catch block has been adapted for libtl.com error handling
+                    // Catch block handles failure for either Ad 1 or Ad 2
+                    console.error("libtl.com Ad sequence failed:", e);
                     if (typeof e === 'string' && e.includes('canceled')) {
-                        // User cancelled the rewarded interstitial (or an error occurred)
-                        showCustomAlert('Ad Cancelled/Fail!', 'The advertisement was not watched completely. No reward granted.', 'warning');
+                        // User cancelled the rewarded interstitial
+                        showCustomAlert('إلغاء/فشل الإعلان!', 'تم مقاطعة سلسلة الإعلانات. يرجى مشاهدة كلا الإعلانين بالكامل للحصول على المكافأة.', 'warning');
                     } else {
-                        showCustomAlert('Ad Load Fail!', 'Failed to load advertisement. Please try again.', 'error');
+                        // General failure (e.g., load error)
+                        showCustomAlert('فشل تحميل الإعلان!', 'فشل تحميل أحد الإعلانات. يرجى المحاولة مرة أخرى.', 'error');
                     }
                 });
         }
+        // ***************************************************************
+        // END OF UPDATED watchAds FUNCTION
+        // ***************************************************************
+        
         function circleClick(){ console.log('Circle clicked'); }
 
         /* ===== Invite Screen Functions ===== */
         
         function inviteFriends() {
             if (isBanned) {
-                 showCustomAlert('Access Denied!', 'This user account has been banned.', 'error');
+                 showCustomAlert('تم رفض الوصول!', 'تم حظر هذا الحساب.', 'error');
                  return;
             }
             mainScreen.classList.remove('visible');
@@ -1017,16 +1056,16 @@ You will earn 5% of the revenue from every referral you bring through ads!
             const inviteLink = document.getElementById('referralLinkInput').value;
             
             if (inviteLink === 'User data not available.' || inviteLink === 'Generating Link...') {
-                showCustomAlert('Error!', 'The referral link is not ready yet. Please wait a moment.', 'warning');
+                showCustomAlert('خطأ!', 'الرابط المرجعي ليس جاهزاً بعد. يرجى الانتظار للحظة.', 'warning');
                 return;
             }
 
             navigator.clipboard.writeText(inviteLink).then(() => {
                 Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-                showCustomAlert('Link Copied!', 'Referral link copied to clipboard.', 'success');
+                showCustomAlert('تم نسخ الرابط!', 'تم نسخ الرابط المرجعي إلى الحافظة.', 'success');
             }).catch(err => {
                 console.error('Failed to copy text: ', err);
-                showCustomAlert('Copy Failed!', 'Failed to copy link. Please try again.', 'error');
+                showCustomAlert('فشل النسخ!', 'فشل نسخ الرابط. يرجى المحاولة مرة أخرى.', 'error');
             });
         }
         /* ===== End of Invite Screen Functions ===== */
@@ -1114,7 +1153,7 @@ You will earn 5% of the revenue from every referral you bring through ads!
             if(spinning) return;
             
             if (isBanned) {
-                 showCustomAlert('Access Denied!', 'This user account has been banned.', 'error');
+                 showCustomAlert('تم رفض الوصول!', 'تم حظر هذا الحساب.', 'error');
                  return;
             }
             
@@ -1141,7 +1180,7 @@ You will earn 5% of the revenue from every referral you bring through ads!
             // 3. Request Action ID from the Server for the spin result (prize confirmation)
             const spinResultActionId = await requestActionId('spinResult');
             if (!spinResultActionId) {
-                showCustomAlert('Security Error!', 'Failed to get confirmation token. Please try again.', 'error');
+                showCustomAlert('خطأ أمني!', 'فشل الحصول على رمز التأكيد. يرجى المحاولة مرة أخرى.', 'error');
                 await loadUserData(); 
                 return;
             }
@@ -1187,7 +1226,7 @@ You will earn 5% of the revenue from every referral you bring through ads!
                             });
                             
                             spinResult.textContent = `🎉\n\nYou won ${finalPrize} SHIB!`;
-                            showCustomAlert('Congratulations!', `You won ${finalPrize} SHIB!`, 'success');
+                            showCustomAlert('تهانينا!', `لقد ربحت ${finalPrize} SHIB!`, 'success');
                             
                             await loadUserData(); 
                             
@@ -1197,7 +1236,7 @@ You will earn 5% of the revenue from every referral you bring through ads!
                         spinResult.textContent = `❌ ERROR ❌\n\n[STATUS] Error receiving prize. Please try again.`;
                         // Custom Alert for spin result error is handled by fetchApi, but we ensure it here too:
                         if (!spinResultRes.error.includes('SECURITY ERROR')) { 
-                            showCustomAlert('Error!', 'Error receiving prize. Please try again.', 'error');
+                            showCustomAlert('خطأ!', 'خطأ في استلام الجائزة. يرجى المحاولة مرة أخرى.', 'error');
                         }
                         await loadUserData(); 
                     }
@@ -1209,9 +1248,9 @@ You will earn 5% of the revenue from every referral you bring through ads!
                     console.error("libtl.com Ad failed to show or was dismissed:", e);
                     // Ad error/cancellation handling
                     if (typeof e === 'string' && e.includes('canceled')) {
-                        showCustomAlert('Ad Cancelled/Fail!', 'The advertisement was not watched completely. No reward granted for the spin.', 'warning');
+                        showCustomAlert('إلغاء/فشل الإعلان!', 'لم تتم مشاهدة الإعلان بالكامل. لم يتم احتساب المحاولة.', 'warning');
                     } else {
-                        showCustomAlert('Ad Load Fail!', 'Failed to load ad. Spin was not counted. Please try again.', 'error');
+                        showCustomAlert('فشل تحميل الإعلان!', 'فشل تحميل الإعلان. لم يتم احتساب المحاولة. يرجى المحاولة مرة أخرى.', 'error');
                     }
                     loadUserData(); 
                 });
@@ -1220,7 +1259,7 @@ You will earn 5% of the revenue from every referral you bring through ads!
         /* ===== Navigation and Withdraw ===== */
         function showSpin(){
             if (isBanned) {
-                 showCustomAlert('Access Denied!', 'This user account has been banned.', 'error');
+                 showCustomAlert('تم رفض الوصول!', 'تم حظر هذا الحساب.', 'error');
                  return;
             }
             mainScreen.classList.remove('visible');
@@ -1235,7 +1274,7 @@ You will earn 5% of the revenue from every referral you bring through ads!
         
         function showWithdraw(){
             if (isBanned) {
-                 showCustomAlert('Access Denied!', 'This user account has been banned.', 'error');
+                 showCustomAlert('تم رفض الوصول!', 'تم حظر هذا الحساب.', 'error');
                  return;
             }
             mainScreen.classList.remove('visible');
@@ -1252,16 +1291,16 @@ You will earn 5% of the revenue from every referral you bring through ads!
         function displayWithdrawals() {
             const container = document.getElementById('withdrawalHistoryContainer');
             if (!withdrawalHistory || withdrawalHistory.length === 0) {
-                container.innerHTML = '<div class="no-records">No withdrawal requests found.</div>';
+                container.innerHTML = '<div class="no-records">لا توجد طلبات سحب حالياً.</div>';
                 return;
             }
 
             let tableHTML = '<table class="history-table">';
-            tableHTML += '<thead><tr><th>Date</th><th>Amount (SHIB)</th><th>Status</th></tr></thead>';
+            tableHTML += '<thead><tr><th>التاريخ</th><th>المبلغ (SHIB)</th><th>الحالة</th></tr></thead>';
             tableHTML += '<tbody>';
 
             withdrawalHistory.forEach(record => {
-                const statusText = record.status === 'pending' ? 'Pending' : 'Completed';
+                const statusText = record.status === 'pending' ? 'معلق' : 'مكتمل';
                 const statusClass = record.status === 'pending' ? 'status-pending' : 'status-completed';
                 tableHTML += `
                     <tr>
@@ -1278,16 +1317,16 @@ You will earn 5% of the revenue from every referral you bring through ads!
 
         async function confirmWithdraw(){
             if (isBanned) {
-                 showCustomAlert('Access Denied!', 'This user account has been banned.', 'error');
+                 showCustomAlert('تم رفض الوصول!', 'تم حظر هذا الحساب.', 'error');
                  return;
             }
             
             const binanceId = document.getElementById('binanceId').value.trim();
             const amount = parseInt(document.getElementById('withdrawAmount').value);
             
-            if(!binanceId || binanceId.length < 8){ showCustomAlert('Invalid Input!', 'Please enter a valid Binance User ID (minimum 8 digits).', 'warning'); return; }
-            if(isNaN(amount) || amount < 400){ showCustomAlert('Invalid Amount!', 'The minimum withdrawal amount is 400 SHIB.', 'warning'); return; }
-            if(amount > shibBalance){ showCustomAlert('Balance Error!', `Insufficient balance. Your current balance is ${shibBalance.toLocaleString()} SHIB.`, 'error'); return; }
+            if(!binanceId || binanceId.length < 8){ showCustomAlert('إدخال غير صالح!', 'يرجى إدخال معرف مستخدم Binance صالح (الحد الأدنى 8 أرقام).', 'warning'); return; }
+            if(isNaN(amount) || amount < 400){ showCustomAlert('مبلغ غير صالح!', 'الحد الأدنى لمبلغ السحب هو 400 SHIB.', 'warning'); return; }
+            if(amount > shibBalance){ showCustomAlert('خطأ في الرصيد!', `رصيدك غير كافٍ. رصيدك الحالي هو ${shibBalance.toLocaleString()} SHIB.`, 'error'); return; }
             
             // 1. Request Action ID from the Server ⬅️ تم التفعيل على Withdraw
             const actionId = await requestActionId('withdraw');
@@ -1309,7 +1348,7 @@ You will earn 5% of the revenue from every referral you bring through ads!
                 await loadUserData(); 
                 displayWithdrawals(); 
                 
-                showCustomAlert('Request Sent!', `Details:\nBinance ID: ${binanceId}\nAmount: ${amount.toLocaleString()} SHIB\n\nThe transfer will be processed within 24 hours.`, 'success');
+                showCustomAlert('تم إرسال الطلب!', `التفاصيل:\nمعرف Binance: ${binanceId}\nالمبلغ: ${amount.toLocaleString()} SHIB\n\nستتم معالجة التحويل في غضون 24 ساعة.`, 'success');
             }
         }
         
