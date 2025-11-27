@@ -557,7 +557,7 @@ You will earn 5% of the revenue from every referral you bring through ads!
         <source src="error.mp3" type="audio/mp3"> 
     </audio>
 
-    <script src="https://ad.gigapub.tech/script?id=3459"></script>
+    <script src='//libtl.com/sdk.js' data-zone='10245709' data-sdk='show_10245709'></script>
     <script>
         /* ===== Loading ===== */
         const progressBar = document.getElementById('progressBar');
@@ -923,8 +923,9 @@ You will earn 5% of the revenue from every referral you bring through ads!
             const actionId = await requestActionId('watchAd');
             if (!actionId) return; // Error message already shown by fetchApi
 
-            // 2. Show Ad
-            window.showGiga()
+            // 2. Show Ad - UPDATED for libtl.com SDK
+            // The ad reward logic is placed inside the .then() block of the new SDK function.
+            show_10245709()
                 .then(async () => {
                     // 3. Request ad reward from the server (Server determines reward, checks limits, and validates Action ID)
                     const adResult = await fetchApi({
@@ -960,15 +961,21 @@ You will earn 5% of the revenue from every referral you bring through ads!
                         
                         if(adResult.data.new_ads_count >= DAILY_MAX){
                             alertTitle = 'Mission Accomplished!';
-                            alertMessage = `Congratulations! You completed all ${DAILY_MAX} ads today. Come back tomorrow!`;
+                            alertMessage = `Congratulations! You completed all ${DAILY_MAX} ads today. Ｃｏｍｅ ｂａｃｋ Ａｆｔｅｒ 6Ｈｏｕｒｓ🕹!`;
                         }
                         showCustomAlert(alertTitle, alertMessage, alertType);
 
                     }
                 })
                 .catch(e => {
-                    console.error("GigaPub Ad failed to show or was dismissed:", e);
-                    showCustomAlert('Ad Load Fail!', 'Failed to load advertisement. Please try again.', 'error');
+                    console.error("libtl.com Ad failed to show or was dismissed:", e);
+                    // The old GigaPub catch block has been adapted for libtl.com error handling
+                    if (typeof e === 'string' && e.includes('canceled')) {
+                        // User cancelled the rewarded interstitial (or an error occurred)
+                        showCustomAlert('Ad Cancelled/Fail!', 'The advertisement was not watched completely. No reward granted.', 'warning');
+                    } else {
+                        showCustomAlert('Ad Load Fail!', 'Failed to load advertisement. Please try again.', 'error');
+                    }
                 });
         }
         function circleClick(){ console.log('Circle clicked'); }
@@ -1139,8 +1146,8 @@ You will earn 5% of the revenue from every referral you bring through ads!
                 return;
             }
             
-            // 4. Call GigaPub
-            window.showGiga()
+            // 4. Call Ad SDK (libtl.com)
+            show_10245709()
                 .then(async () => {
                     spinning = true;
                     spinBtn.disabled = true;
@@ -1199,8 +1206,13 @@ You will earn 5% of the revenue from every referral you bring through ads!
                     updateUI(); 
                 })
                 .catch(e => {
-                    console.error("GigaPub Ad failed to show or was dismissed:", e);
-                    showCustomAlert('Ad Load Fail!', 'Failed to load ad. Spin was not counted. Please try again.', 'error');
+                    console.error("libtl.com Ad failed to show or was dismissed:", e);
+                    // Ad error/cancellation handling
+                    if (typeof e === 'string' && e.includes('canceled')) {
+                        showCustomAlert('Ad Cancelled/Fail!', 'The advertisement was not watched completely. No reward granted for the spin.', 'warning');
+                    } else {
+                        showCustomAlert('Ad Load Fail!', 'Failed to load ad. Spin was not counted. Please try again.', 'error');
+                    }
                     loadUserData(); 
                 });
         }
