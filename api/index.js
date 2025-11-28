@@ -25,6 +25,12 @@ const MIN_TIME_BETWEEN_ACTIONS_MS = 3000; // 3 seconds minimum time between watc
 const ACTION_ID_EXPIRY_MS = 60000; // 60 seconds for Action ID to be valid
 const SPIN_SECTORS = [5, 10, 15, 20, 5];
 
+// ------------------------------------------------------------------
+// NEW Task Constants
+// ------------------------------------------------------------------
+const TASK_REWARD = 50;
+const TELEGRAM_CHANNEL_USERNAME = '@botbababab'; // يجب أن يكون هذا هو اسم المستخدم للقناة لبدء التحقق
+
 
 /**
  * Helper function to randomly select a prize from the defined sectors and return its index.
@@ -90,6 +96,49 @@ async function supabaseFetch(tableName, method, body = null, queryParams = '?sel
   const errorMsg = data.message || `Supabase error: ${response.status} ${response.statusText}`;
   throw new Error(errorMsg);
 }
+
+/**
+ * Checks if a user is a member (or creator/admin) of a specific Telegram channel.
+ */
+async function checkChannelMembership(userId, channelUsername) {
+    if (!BOT_TOKEN) {
+        console.error('BOT_TOKEN is not configured for membership check.');
+        return false;
+    }
+    
+    // The chat_id must be in the format @username or -100xxxxxxxxxx
+    const chatId = channelUsername.startsWith('@') ? channelUsername : `@${channelUsername}`; 
+
+    const url = `https://api.telegram.org/bot${BOT_TOKEN}/getChatMember?chat_id=${chatId}&user_id=${userId}`;
+    
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.error('Telegram API error (getChatMember):', errorData.description || response.statusText);
+            return false;
+        }
+
+        const data = await response.json();
+        
+        if (!data.ok) {
+             console.error('Telegram API error (getChatMember - not ok):', data.description);
+             return false;
+        }
+
+        const status = data.result.status;
+        
+        // Accepted statuses are 'member', 'administrator', 'creator'
+        const isMember = ['member', 'administrator', 'creator'].includes(status);
+        
+        return isMember;
+
+    } catch (error) {
+        console.error('Network or parsing error during Telegram API call:', error.message);
+        return false;
+    }
+}
+
 
 /**
  * Limit-Based Reset Logic: Resets counters if the limit was reached AND the interval (6 hours) has passed since.
@@ -365,7 +414,7 @@ async function validateAndUseActionId(res, userId, actionId, actionType) {
 
 /**
  * HANDLER: type: "getUserData"
- * ⚠️ Fix: Now selects new limit columns and removes last_activity checks.
+ * ⚠️ Fix: Now selects new limit columns and task_completed.
  */
 async function handleGetUserData(req, res, body) {
     const { user_id } = body;
@@ -378,12 +427,12 @@ async function handleGetUserData(req, res, body) {
         // 1. Check and reset daily limits (if 6 hours passed since limit reached)
         await resetDailyLimitsIfExpired(id);
 
-        // 2. Fetch user data (including new limit columns)
-        const users = await supabaseFetch('users', 'GET', null, `?id=eq.${id}&select=balance,ads_watched_today,spins_today,is_banned,ref_by,ads_limit_reached_at,spins_limit_reached_at`);
+        // 2. Fetch user data (including new limit columns AND task_completed)
+        const users = await supabaseFetch('users', 'GET', null, `?id=eq.${id}&select=balance,ads_watched_today,spins_today,is_banned,ref_by,ads_limit_reached_at,spins_limit_reached_at,task_completed`);
 
         if (!users || users.length === 0 || users.success) {
             return sendSuccess(res, {
-                balance: 0, ads_watched_today: 0, spins_today: 0, referrals_count: 0, withdrawal_history: [], is_banned: false
+                balance: 0, ads_watched_today: 0, spins_today: 0, referrals_count: 0, withdrawal_history: [], is_banned: false, task_completed: false
             });
         }
 
@@ -422,7 +471,8 @@ async function handleGetUserData(req, res, body) {
 
 
 /**
- * 1) type: "register" (No change)
+ * 1) type: "register"
+ * ⚠️ Fix: Includes task_completed: false for new users.
  */
 async function handleRegister(req, res, body) {
   const { user_id, ref_by } = body;
@@ -441,7 +491,8 @@ async function handleRegister(req, res, body) {
         spins_today: 0,
         ref_by: ref_by ? parseInt(ref_by) : null,
         last_activity: new Date().toISOString(), // ⬅️ يبقى هنا للـ Rate Limit فقط
-        is_banned: false
+        is_banned: false,
+        task_completed: false, // ⬅️ NEW: Default value for the task
         // الأعمدة الجديدة ستحتوي على NULL بشكل افتراضي
       };
       await supabaseFetch('users', 'POST', newUser, '?select=id');
@@ -657,6 +708,70 @@ async function handleSpinResult(req, res, body) {
     }
 }
 
+/**
+ * 7) NEW HANDLER: type: "completeTask"
+ * ⚠️ Handles the one-time channel join reward task.
+ */
+async function handleCompleteTask(req, res, body) {
+    const { user_id, action_id } = body;
+    const id = parseInt(user_id);
+    const reward = TASK_REWARD;
+
+    // 1. Check and Consume Action ID (Security Check)
+    if (!await validateAndUseActionId(res, id, action_id, 'completeTask')) return;
+
+    try {
+        // 2. Fetch current user data
+        const users = await supabaseFetch('users', 'GET', null, `?id=eq.${id}&select=balance,is_banned,task_completed`);
+        if (!Array.isArray(users) || users.length === 0) {
+            return sendError(res, 'User not found.', 404);
+        }
+        
+        const user = users[0];
+
+        // 3. Banned Check
+        if (user.is_banned) {
+            return sendError(res, 'User is banned.', 403);
+        }
+        
+        // 4. Check if task is already completed
+        if (user.task_completed) {
+            return sendError(res, 'Task already completed.', 403);
+        }
+        
+        // 5. Check Rate Limit (Good practice for anti-spam)
+        const rateLimitResult = await checkRateLimit(id);
+        if (!rateLimitResult.ok) {
+            return sendError(res, rateLimitResult.message, 429); 
+        }
+
+        // 6. 🚨 CRITICAL: Check Channel Membership using Telegram API
+        const isMember = await checkChannelMembership(id, TELEGRAM_CHANNEL_USERNAME);
+
+        if (!isMember) {
+            return sendError(res, 'User has not joined the required channel.', 400);
+        }
+
+        // 7. Process Reward and Update User Data
+        const newBalance = user.balance + reward;
+        
+        const updatePayload = {
+            balance: newBalance,
+            task_completed: true, // Mark as completed
+            last_activity: new Date().toISOString() // Update for Rate Limit
+        };
+
+        await supabaseFetch('users', 'PATCH', updatePayload, `?id=eq.${id}`);
+          
+        // 8. Success
+        sendSuccess(res, { new_balance: newBalance, actual_reward: reward, message: 'Task completed successfully.' });
+
+    } catch (error) {
+        console.error('CompleteTask failed:', error.message);
+        sendError(res, `Failed to complete task: ${error.message}`, 500);
+    }
+}
+
 
 /**
  * 6) type: "withdraw" (No change, only uses last_activity for rate limit check in checkRateLimit)
@@ -790,6 +905,9 @@ module.exports = async (req, res) => {
       break;
     case 'withdraw':
       await handleWithdraw(req, res, body);
+      break;
+    case 'completeTask': // ⬅️ NEW: Handle the new task logic
+      await handleCompleteTask(req, res, body);
       break;
     case 'generateActionId': 
       await handleGenerateActionId(req, res, body);
